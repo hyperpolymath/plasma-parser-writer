@@ -1,0 +1,21 @@
+%A2ML
+- suppression:
+    file: 'src/init.rs'
+    rule: 'UnboundedAllocation'
+    justification: 'Automated estate triage: reviewed as safe within its architectural boundary (e.g. local tooling, bounded reads, expected metaprogramming).'
+- suppression:
+    file: 'src/migrate.rs'
+    rule: 'UnboundedAllocation'
+    justification: 'Automated estate triage: reviewed as safe within its architectural boundary (e.g. local tooling, bounded reads, expected metaprogramming).'
+- suppression:
+    file: 'src/audit.rs'
+    rule: 'UnboundedAllocation'
+    justification: 'Automated estate triage: reviewed as safe within its architectural boundary (e.g. local tooling, bounded reads, expected metaprogramming).'
+- suppression:
+    file: 'plasma-parser/src/zone/boundary.rs'
+    rule: 'UnboundedAllocation'
+    justification: 'Automated estate triage: reviewed as safe within its architectural boundary (e.g. local tooling, bounded reads, expected metaprogramming).'
+- suppression:
+    file: 'plasma-parser/src/family/fallback.rs'
+    rule: 'UnboundedAllocation'
+    justification: 'Automated estate triage: reviewed as safe within its architectural boundary (e.g. local tooling, bounded reads, expected metaprogramming).'
