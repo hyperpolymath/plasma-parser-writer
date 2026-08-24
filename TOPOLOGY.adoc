@@ -1,15 +1,8 @@
-<!--
-SPDX-License-Identifier: CC-BY-SA-4.0
-Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
--->
-<!-- TOPOLOGY.md — Project architecture map and completion dashboard -->
-<!-- Last updated: 2026-07-02 -->
+== Palimpsest Plasma — Project Topology
 
-# Palimpsest Plasma — Project Topology
+=== System Architecture
 
-## System Architecture
-
-```
+....
                  ┌─────────────────────────────────────────────────────┐
                  │                  plasma (CLI)                       │
                  │  check · facts · policy · audit · init · badge ·    │
@@ -39,11 +32,11 @@ Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
         │  Contract: JSON findings · SARIF plasma/<rule-id> ·          │
         │            plasma facts snapshots (diffable)                 │
         └──────────────────────────────────────────────────────────────┘
-```
+....
 
-## Completion Dashboard
+=== Completion Dashboard
 
-```
+....
 COMPONENT                          STATUS              NOTES
 ─────────────────────────────────  ──────────────────  ─────────────────────────────────
 PLASMA-PARSER (Rust)
@@ -77,29 +70,30 @@ INFRASTRUCTURE
 
 ─────────────────────────────────────────────────────────────────────────────
 OVERALL:                            █████░░░░░  ~50%   Engine v0 shipped; planner + surfaces ahead
-```
+....
 
-## Key Dependencies
+=== Key Dependencies
 
-```
+....
 Policy AST ──► Schema Loader ──► Pure Evaluator ──► Findings ──► human/JSON/SARIF
                                       ▲
 Fact Collector (walk, SPDX headers, ──┘
 metadata, git) ── uses plasma-parser header extraction
 
 plasma audit ──► plasma-parser scan_repo ──► zone map (.plasma.toml)
-```
+....
 
-## Update Protocol
+=== Update Protocol
 
 This file is maintained by both humans and AI agents. When updating:
 
-1. **After completing a component**: Change its bar and percentage
-2. **After adding a component**: Add a new row in the appropriate section
-3. **After architectural changes**: Update the ASCII diagram
-4. **Date**: Update the `Last updated` comment at the top of this file
+[arabic]
+. *After completing a component*: Change its bar and percentage
+. *After adding a component*: Add a new row in the appropriate section
+. *After architectural changes*: Update the ASCII diagram
+. *Date*: Update the `+Last updated+` comment at the top of this file
 
-Progress bars use: `█` (filled) and `░` (empty), 10 characters wide.
-Percentages: 0%, 10%, 20%, ... 100% (in 10% increments).
-Honesty rule: a component that does not compile or run is 0–20%,
-whatever its design documents say.
+Progress bars use: `+█+` (filled) and `+░+` (empty), 10 characters wide.
+Percentages: 0%, 10%, 20%, … 100% (in 10% increments). Honesty rule: a
+component that does not compile or run is 0–20%, whatever its design
+documents say.
