@@ -28,7 +28,7 @@ Run everything with `+cargo test --workspace+`.
 === What’s Covered
 
 * SPDX expression parsing (lexer, parser, catalog
-incl. Palimpsest-family ids)
+incl. Palimpsest-family ids)
 * Zone assignment and `+.plasma.toml+` parsing
 * Repository scanning (`+scan_repo+`): counts, score, deterministic
 ordering

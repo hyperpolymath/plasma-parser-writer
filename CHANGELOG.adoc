@@ -43,7 +43,7 @@ required files stay manual (`+plasma-engine/src/{action,apply}.rs+`)
 * feat(engine): overlay `+override-rules+` semantics — an overlay
 removes base rules by id from the effective set, and may pair an
 override with an `+add-rules+` reusing the same id to _replace_ a rule
-(e.g. relax a severity or exempt a zone). `+override-rules+` targeting
+(e.g. relax a severity or exempt a zone). `+override-rules+` targeting
 an unknown base id is a load error; `+modify-rules+` remains reserved.
 The evaluator and the action planner share one `+effective_rules+` set,
 so a finding never resolves to an overridden rule
