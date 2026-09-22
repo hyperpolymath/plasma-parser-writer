@@ -1,6 +1,7 @@
-<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
 
 # Contributing
 
-See the repository's [contribution guide](.github/CONTRIBUTING.md) for setup,
-issue-reporting, and development workflow guidance.
+The contribution guide is maintained at
+[`.github/CONTRIBUTING.md`](.github/CONTRIBUTING.md).
