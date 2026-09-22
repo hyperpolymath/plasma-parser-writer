@@ -1,4 +1,12 @@
 %A2ML
+;; SPDX-License-Identifier: MPL-2.0
+;; Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+(metadata
+  (name "assail-classifications")
+  (version "1.0.0")
+)
+
 - suppression:
     file: 'src/init.rs'
     rule: 'UnboundedAllocation'
