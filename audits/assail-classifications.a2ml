@@ -1,4 +1,6 @@
 %A2ML
+project = "plasma-parser-writer"
+
 - suppression:
     file: 'src/init.rs'
     rule: 'UnboundedAllocation'
