@@ -4,6 +4,7 @@ message: "If you use this software, please cite it as below."
 type: software
 authors:
   - given-names: "Jonathan D.A."
+    orcid: "https://orcid.org/0000-0002-3078-6652"
     family-names: "Jewell"
     email: "j.d.a.jewell@open.ac.uk"
     affiliation: "hyperpolymath"
