@@ -113,7 +113,11 @@ jobs:
           # The bot branch is rebuilt from the default branch each run, which
           # would discard anything else on it. If someone has pushed to it
           # (say, a fix the newer gate needed), leave it for review.
-          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+          # The bot branch's tip as inspected here is the lease for the push
+          # below: a commit landing on the branch between this check and the
+          # push is refused by git ("stale info"), never overwritten.
+          remote_sha=$(git ls-remote --heads origin "$BRANCH" | cut -f1)
+          if [ -n "$remote_sha" ]; then
             foreign=$(gh api "repos/$GITHUB_REPOSITORY/compare/$base...$BRANCH" \
                         --jq "[.commits[] | select(.commit.author.email != \"$BOT_EMAIL\")] | length")
             if [ "$foreign" != 0 ]; then
@@ -125,8 +129,9 @@ jobs:
           git switch --quiet -c "$BRANCH"
           git -c user.name='github-actions[bot]' -c user.email="$BOT_EMAIL" \
               commit --quiet -am "ci(cicd-suite): track cicd-suite ${head:0:7}"
-          if ! git push --quiet --force origin "$BRANCH"; then
-            echo "::error::Push refused: writing under .github/workflows/ needs the AUTOMATION_TOKEN secret described above."
+          # An empty lease value means "the ref must not exist yet".
+          if ! git push --quiet --force-with-lease="refs/heads/$BRANCH:$remote_sha" origin "$BRANCH"; then
+            echo "::error::Push refused: either $BRANCH moved since it was inspected (someone pushed to it; re-run) or the token cannot write under .github/workflows/ (AUTOMATION_TOKEN, described above)."
             exit 1
           fi
           body="Moves every cicd-suite reusable this repository calls to cicd-suite \`${head:0:7}\`: https://github.com/hyperpolymath/cicd-suite/commit/$head. This PR's own gate runs are the check. Opened by \`track-estate-audit.yml\`."
