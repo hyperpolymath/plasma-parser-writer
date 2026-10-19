@@ -46,7 +46,10 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+      # AUTOMATION_TOKEN only. GITHUB_TOKEN cannot push a change under
+      # .github/workflows/, so a fallback to it would run the whole job to a
+      # refused push; the first step below fails instead, naming the secret.
+      GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
       BRANCH: ci/track-estate-audit
       BOT_EMAIL: 41898583+github-actions[bot]@users.noreply.github.com
     steps:
@@ -59,6 +62,14 @@ jobs:
           allowed-endpoints: >
             api.github.com:443
             github.com:443
+      - name: Require the automation token
+        env:
+          HAVE_TOKEN: ${{ secrets.AUTOMATION_TOKEN != '' }}
+        run: |
+          if [ "$HAVE_TOKEN" != "true" ]; then
+            echo "::error::AUTOMATION_TOKEN is not set. This job edits files under .github/workflows/, which GITHUB_TOKEN may not push; add the fine-grained token described at the top of this workflow (Contents, Pull requests and Workflows: read/write)."
+            exit 1
+          fi
       - name: Move every cicd-suite pin to HEAD and open a PR
         run: |
           set -euo pipefail
