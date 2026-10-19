@@ -1,18 +1,44 @@
 # SPDX-License-Identifier: MPL-2.0
-# Rust CI — thin wrapper calling the shared estate reusable in
-# hyperpolymath/standards. Configure once, propagate everywhere.
-# See: docs/CI-REUSABLE-WORKFLOWS.adoc in standards.
+# Rust CI — thin caller of the estate's strict Rust gate, which lives in
+# hyperpolymath/cicd-suite as a reusable workflow. Do not copy its jobs in
+# here: a copy freezes at one cicd-suite commit and never receives a fix.
+#
+# The job id MUST stay `rust-ci`: the contexts `rust-ci / Cargo check +
+# clippy + fmt` and `rust-ci / Cargo test` are what branch rules already
+# require, and `rust-ci / Rust CI verdict` is the one context to require
+# from now on (red if any gate failed OR was skipped while expected).
+#
+# The pin is a full SHA, advanced by track-estate-audit.yml (a PR whose own
+# run of this gate is the check). Never `@main` or a tag: the account
+# enforces sha_pinning_required and a moving ref would change the gate in
+# every repository at once.
+#
+# ⚠ DE-ONBOARDED from actions.lock, deliberately, like the estate-audit
+# caller: an onboarded cross-repo reusable startup-fails with zero jobs
+# under sha_pinning_required. cicd-suite/scripts/deonboard-workflow.sh
+# reverses a re-onboarding.
+#
+# No `secrets:` line: the reusable consumes none.
 name: Rust CI
+
 on:
   push:
     branches: [main, master]
   pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   actions: read
   contents: read
-# Pin must be at or past the standards commit that passes `toolchain: stable`
-# to the SHA-pinned dtolnay/rust-toolchain. d135b05b predates that and fails
-# every run with "'toolchain' is a required input" (#105).
+
 jobs:
   rust-ci:
-    uses: hyperpolymath/standards/.github/workflows/rust-ci-reusable.yml@95de3dfc3fcf09a1cf3325ab42723e3d81682b45
+    uses: hyperpolymath/cicd-suite/.github/workflows/rust-ci.yml@9a947faad4f7f6640148980dd892b39f216fd091 # cicd-suite main
+    # Inputs (all optional; defaults are the strict ones):
+    #   working_directory: crates/cli   # sub-crate / monorepo
+    #   toolchain: "1.85.0"             # default "auto": rust-toolchain.toml, else stable
+    #   enable_coverage: true           # with coverage_floor: "70"
+    #   zig_version: "0.15.2"           # crates with a Zig-native build
