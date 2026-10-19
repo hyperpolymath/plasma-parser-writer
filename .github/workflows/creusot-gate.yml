@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   creusot:
-    uses: hyperpolymath/cicd-suite/.github/workflows/creusot-gate.yml@9a947faad4f7f6640148980dd892b39f216fd091 # cicd-suite main
+    uses: hyperpolymath/cicd-suite/.github/workflows/creusot-gate.yml@bf7dd95cf49733019343ff485c2f45c6b261839c # cicd-suite main
     # Inputs (optional):
     #   creusot_version: "0.14.0"          # paired with rust_nightly: "nightly-2026-08-03"
     #   enforce_hollow: true               # a creusot-std dependency must annotate something

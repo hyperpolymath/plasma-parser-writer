@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   rust-ci:
-    uses: hyperpolymath/cicd-suite/.github/workflows/rust-ci.yml@9a947faad4f7f6640148980dd892b39f216fd091 # cicd-suite main
+    uses: hyperpolymath/cicd-suite/.github/workflows/rust-ci.yml@bf7dd95cf49733019343ff485c2f45c6b261839c # cicd-suite main
     # Inputs (all optional; defaults are the strict ones):
     #   working_directory: crates/cli   # sub-crate / monorepo
     #   toolchain: "1.85.0"             # default "auto": rust-toolchain.toml, else stable
