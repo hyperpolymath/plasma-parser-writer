@@ -46,10 +46,6 @@ jobs:
       contents: write
       pull-requests: write
     env:
-      # AUTOMATION_TOKEN only. GITHUB_TOKEN cannot push a change under
-      # .github/workflows/, so a fallback to it would run the whole job to a
-      # refused push; the first step below fails instead, naming the secret.
-      GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
       BRANCH: ci/track-estate-audit
       BOT_EMAIL: 41898583+github-actions[bot]@users.noreply.github.com
     steps:
@@ -71,6 +67,13 @@ jobs:
             exit 1
           fi
       - name: Move every cicd-suite pin to HEAD and open a PR
+        env:
+          # AUTOMATION_TOKEN only, and only here: GITHUB_TOKEN cannot push a
+          # change under .github/workflows/ (a fallback to it would run the
+          # whole job to a refused push; the step above fails first, naming
+          # the secret), and the token is scoped to the one step that uses
+          # it so no earlier action — harden-runner included — can read it.
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
         run: |
           set -euo pipefail
           gh auth setup-git
