@@ -10,8 +10,13 @@ name: Track latest cicd-suite gates
 # The file keeps its original name (track-estate-audit.yml) so repositories
 # that already carry it receive this version in place.
 #
-# ⚠ NO `uses:` ANYWHERE, DELIBERATELY: actions.lock is keyed by workflow path,
-# and this must run even when the lock is stale.
+# The only `uses:` here is step-security/harden-runner (hypatia RE001: a job
+# that holds a token monitors its egress), pinned at a full SHA. Everything
+# else is plain `run:`, so a stale cicd-suite pin can never stop the workflow
+# that moves cicd-suite pins. A repository that carries
+# .github/workflows/actions.lock must hold a record for this workflow
+# (`gh actions-lock`), or its first run dies at Set up job with "invalid
+# lockfile pin".
 #
 # Token: AUTOMATION_TOKEN, a fine-grained token on this repository with
 # Contents, Pull requests and Workflows set to read/write. In practice it is
@@ -34,6 +39,9 @@ concurrency:
 jobs:
   bump:
     runs-on: ubuntu-latest
+    # A hung `gh` call must not hold a runner for the default six hours
+    # (hypatia WF013 / WH006). The whole job is a clone, a sed and a PR.
+    timeout-minutes: 20
     permissions:
       contents: write
       pull-requests: write
@@ -42,6 +50,15 @@ jobs:
       BRANCH: ci/track-estate-audit
       BOT_EMAIL: 41898583+github-actions[bot]@users.noreply.github.com
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          # The job clones, reads cicd-suite HEAD and pushes one branch: it
+          # talks to GitHub only, so block (RE002) rather than audit.
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
       - name: Move every cicd-suite pin to HEAD and open a PR
         run: |
           set -euo pipefail
