@@ -74,6 +74,13 @@ jobs:
             exit 1
           fi
           head=$(git ls-remote https://github.com/hyperpolymath/cicd-suite.git HEAD | cut -f1)
+          # A lookup that succeeds but returns no HEAD leaves $head empty, and
+          # the sed below would then strip every pin. Refuse anything that is
+          # not a full SHA.
+          if ! [[ "$head" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not resolve cicd-suite HEAD (got '${head}'); no pin was touched."
+            exit 1
+          fi
           changed=0
           for caller in "${callers[@]}"; do
             while IFS= read -r pinned; do
