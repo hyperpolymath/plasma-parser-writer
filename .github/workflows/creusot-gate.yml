@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: MPL-2.0
+# Creusot Gate — thin caller of the estate's Rust deductive-verification gate
+# in hyperpolymath/cicd-suite (the Rust twin of the SPARK gate). It detects
+# Creusot obligations and claims, fails a "verified with Creusot" claim that
+# has no contracts behind it, and — when obligations exist — installs Creusot
+# at a pinned release, proves a planted false contract to prove the prover
+# can say no, and runs `cargo creusot prove` in every crate with contracts.
+#
+# Require `creusot / Creusot verdict`. On a tree without obligations the
+# verdict is a notice ("nothing was proved"), not assurance.
+#
+# Full-SHA pin, DE-ONBOARDED from actions.lock, no `secrets:` — see
+# rust-ci.yml in this directory for why.
+name: Creusot Gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  creusot:
+    uses: hyperpolymath/cicd-suite/.github/workflows/creusot-gate.yml@bf7dd95cf49733019343ff485c2f45c6b261839c # cicd-suite main
+    # Inputs (optional):
+    #   creusot_version: "0.14.0"          # paired with rust_nightly: "nightly-2026-08-03"
+    #   enforce_hollow: true               # a creusot-std dependency must annotate something

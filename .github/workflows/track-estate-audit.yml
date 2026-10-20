@@ -1,0 +1,146 @@
+# SPDX-License-Identifier: MPL-2.0
+name: Track latest cicd-suite gates
+
+# Weekly: is any cicd-suite reusable this repository calls behind
+# cicd-suite's main? If so, open a PR that moves every such pin — the estate
+# audit, Rust CI, the Creusot, SPARK and miniKanren gates — to cicd-suite
+# HEAD. The PR's own gate runs are the check: merge it when they are green.
+# Nothing reaches main unreviewed.
+#
+# The file keeps its original name (track-estate-audit.yml) so repositories
+# that already carry it receive this version in place.
+#
+# The only `uses:` here is step-security/harden-runner (hypatia RE001: a job
+# that holds a token monitors its egress), pinned at a full SHA. Everything
+# else is plain `run:`, so a stale cicd-suite pin can never stop the workflow
+# that moves cicd-suite pins. A repository that carries
+# .github/workflows/actions.lock must hold a record for this workflow
+# (`gh actions-lock`), or its first run dies at Set up job with "invalid
+# lockfile pin".
+#
+# Token: AUTOMATION_TOKEN, a fine-grained token on this repository with
+# Contents, Pull requests and Workflows set to read/write. In practice it is
+# required: the bump edits files under .github/workflows/, which
+# GITHUB_TOKEN may not write, and a PR opened by GITHUB_TOKEN does not trigger
+# the gate runs that validate it.
+
+on:
+  schedule:
+    - cron: "23 7 * * 1"   # weekly, Monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: track-estate-audit
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    # A hung `gh` call must not hold a runner for the default six hours
+    # (hypatia WF013 / WH006). The whole job is a clone, a sed and a PR.
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      BRANCH: ci/track-estate-audit
+      BOT_EMAIL: 41898583+github-actions[bot]@users.noreply.github.com
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          # The job clones, reads cicd-suite HEAD and pushes one branch: it
+          # talks to GitHub only, so block (RE002) rather than audit.
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+      - name: Require the automation token
+        env:
+          HAVE_TOKEN: ${{ secrets.AUTOMATION_TOKEN != '' }}
+        run: |
+          if [ "$HAVE_TOKEN" != "true" ]; then
+            echo "::error::AUTOMATION_TOKEN is not set. This job edits files under .github/workflows/, which GITHUB_TOKEN may not push; add the fine-grained token described at the top of this workflow (Contents, Pull requests and Workflows: read/write)."
+            exit 1
+          fi
+      - name: Move every cicd-suite pin to HEAD and open a PR
+        env:
+          # AUTOMATION_TOKEN only, and only here: GITHUB_TOKEN cannot push a
+          # change under .github/workflows/ (a fallback to it would run the
+          # whole job to a refused push; the step above fails first, naming
+          # the secret), and the token is scoped to the one step that uses
+          # it so no earlier action — harden-runner included — can read it.
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          base=$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef --jq .defaultBranchRef.name)
+          gh repo clone "$GITHUB_REPOSITORY" repo -- --quiet --depth 1 --branch "$base"
+          cd repo
+
+          # Every caller of a cicd-suite reusable, with the SHA it pins.
+          mapfile -t callers < <(grep -lE 'uses:[[:space:]]*hyperpolymath/cicd-suite/\.github/workflows/[A-Za-z0-9_.-]+\.yml@[0-9a-f]{40}' .github/workflows/*.yml 2>/dev/null || true)
+          if [ "${#callers[@]}" -eq 0 ]; then
+            echo "::error::no workflow here calls a cicd-suite reusable at a full SHA."
+            exit 1
+          fi
+          head=$(git ls-remote https://github.com/hyperpolymath/cicd-suite.git HEAD | cut -f1)
+          # A lookup that succeeds but returns no HEAD leaves $head empty, and
+          # the sed below would then strip every pin. Refuse anything that is
+          # not a full SHA.
+          if ! [[ "$head" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::could not resolve cicd-suite HEAD (got '${head}'); no pin was touched."
+            exit 1
+          fi
+          changed=0
+          for caller in "${callers[@]}"; do
+            while IFS= read -r pinned; do
+              [ -n "$pinned" ] || continue
+              if [ "$pinned" = "$head" ]; then
+                echo "$caller: already at cicd-suite HEAD ${head:0:7}"
+                continue
+              fi
+              echo "$caller: ${pinned:0:7} -> ${head:0:7}"
+              sed -i "s/$pinned/$head/g" "$caller"
+              changed=1
+            done < <(grep -oE 'cicd-suite/\.github/workflows/[A-Za-z0-9_.-]+\.yml@[0-9a-f]{40}' "$caller" | sed 's/.*@//' | sort -u)
+          done
+          if [ "$changed" -eq 0 ]; then
+            echo "Every cicd-suite pin is at HEAD."
+            exit 0
+          fi
+
+          # The bot branch is rebuilt from the default branch each run, which
+          # would discard anything else on it. If someone has pushed to it
+          # (say, a fix the newer gate needed), leave it for review.
+          # The bot branch's tip as inspected here is the lease for the push
+          # below: a commit landing on the branch between this check and the
+          # push is refused by git ("stale info"), never overwritten.
+          remote_sha=$(git ls-remote --heads origin "$BRANCH" | cut -f1)
+          if [ -n "$remote_sha" ]; then
+            foreign=$(gh api "repos/$GITHUB_REPOSITORY/compare/$base...$BRANCH" \
+                        --jq "[.commits[] | select(.commit.author.email != \"$BOT_EMAIL\")] | length")
+            if [ "$foreign" != 0 ]; then
+              echo "::warning::$BRANCH carries $foreign commit(s) not made by this workflow; leaving it alone. Merge its PR or delete the branch, then re-run."
+              exit 0
+            fi
+          fi
+
+          git switch --quiet -c "$BRANCH"
+          git -c user.name='github-actions[bot]' -c user.email="$BOT_EMAIL" \
+              commit --quiet -am "ci(cicd-suite): track cicd-suite ${head:0:7}"
+          # An empty lease value means "the ref must not exist yet".
+          if ! git push --quiet --force-with-lease="refs/heads/$BRANCH:$remote_sha" origin "$BRANCH"; then
+            echo "::error::Push refused: either $BRANCH moved since it was inspected (someone pushed to it; re-run) or the token cannot write under .github/workflows/ (AUTOMATION_TOKEN, described above)."
+            exit 1
+          fi
+          body="Moves every cicd-suite reusable this repository calls to cicd-suite \`${head:0:7}\`: https://github.com/hyperpolymath/cicd-suite/commit/$head. This PR's own gate runs are the check. Opened by \`track-estate-audit.yml\`."
+          if [ -n "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr edit "$BRANCH" --title "ci(cicd-suite): track cicd-suite ${head:0:7}" --body "$body"
+          else
+            gh pr create --base "$base" --head "$BRANCH" \
+              --title "ci(cicd-suite): track cicd-suite ${head:0:7}" --body "$body"
+          fi

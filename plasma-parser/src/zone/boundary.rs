@@ -36,7 +36,7 @@ struct PlasmaToml {
     family: Option<FamilySection>,
 }
 
-/// The [project] section of .plasma.toml.
+/// The `[project]` section of .plasma.toml.
 #[derive(Debug, serde::Deserialize)]
 struct ProjectSection {
     #[allow(dead_code)]
@@ -45,7 +45,7 @@ struct ProjectSection {
     default_license: Option<String>,
 }
 
-/// A [[zone]] entry in .plasma.toml.
+/// A `[[zone]]` entry in .plasma.toml.
 #[derive(Debug, serde::Deserialize)]
 struct ZoneSection {
     name: String,
@@ -56,7 +56,7 @@ struct ZoneSection {
     copyright: Option<String>,
 }
 
-/// The optional [family] section for palimpsest provision overrides.
+/// The optional `[family]` section for palimpsest provision overrides.
 #[derive(Debug, serde::Deserialize)]
 #[allow(dead_code)]
 struct FamilySection {
