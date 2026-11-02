@@ -43,8 +43,7 @@ jobs:
     # (hypatia WF013 / WH006). The whole job is a clone, a sed and a PR.
     timeout-minutes: 20
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
     env:
       BRANCH: ci/track-estate-audit
       BOT_EMAIL: 41898583+github-actions[bot]@users.noreply.github.com
@@ -58,22 +57,10 @@ jobs:
           allowed-endpoints: >
             api.github.com:443
             github.com:443
-      - name: Require the automation token
-        env:
-          HAVE_TOKEN: ${{ secrets.AUTOMATION_TOKEN != '' }}
-        run: |
-          if [ "$HAVE_TOKEN" != "true" ]; then
-            echo "::error::AUTOMATION_TOKEN is not set. This job edits files under .github/workflows/, which GITHUB_TOKEN may not push; add the fine-grained token described at the top of this workflow (Contents, Pull requests and Workflows: read/write)."
-            exit 1
-          fi
       - name: Move every cicd-suite pin to HEAD and open a PR
         env:
-          # AUTOMATION_TOKEN only, and only here: GITHUB_TOKEN cannot push a
-          # change under .github/workflows/ (a fallback to it would run the
-          # whole job to a refused push; the step above fails first, naming
-          # the secret), and the token is scoped to the one step that uses
-          # it so no earlier action — harden-runner included — can read it.
-          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          WRITE_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
         run: |
           set -euo pipefail
           gh auth setup-git
@@ -112,6 +99,12 @@ jobs:
             echo "Every cicd-suite pin is at HEAD."
             exit 0
           fi
+
+          if [ -z "$WRITE_TOKEN" ]; then
+            echo "::error::Stale cicd-suite pins detected. AUTOMATION_TOKEN is required to propose their update."
+            exit 1
+          fi
+          export GH_TOKEN="$WRITE_TOKEN"
 
           # The bot branch is rebuilt from the default branch each run, which
           # would discard anything else on it. If someone has pushed to it
