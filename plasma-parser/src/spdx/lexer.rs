@@ -29,6 +29,10 @@ pub enum Token {
     LParen,
     /// Right parenthesis ')'.
     RParen,
+    /// Invalid lexical input (unrecognised character or overflowing number).
+    /// Retained as a token so the parser can reject it rather than silently
+    /// changing the meaning of the input.
+    Invalid(String),
 }
 
 /// Lexer for SPDX expression strings.
@@ -98,10 +102,7 @@ impl<'a> Lexer<'a> {
                     Some(Token::Dash)
                 }
             }
-            '0'..='9' => {
-                let num = self.read_number();
-                Some(Token::Number(num))
-            }
+            '0'..='9' => Some(self.read_number()),
             '+' => {
                 self.chars.next();
                 Some(Token::OrLater)
@@ -116,9 +117,13 @@ impl<'a> Lexer<'a> {
                 }
             }
             _ => {
-                // Skip unrecognised characters.
+                // Preserve malformed input as an explicit token. Dropping it
+                // would allow malformed expressions such as `MIT@` to parse
+                // successfully as a different (valid) licence expression.
                 self.chars.next();
-                self.next_token()
+                Some(Token::Invalid(format!(
+                    "unrecognised character {ch:?} at byte offset {start}"
+                )))
             }
         }
     }
@@ -135,8 +140,9 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Read a contiguous run of digit characters and return the parsed number.
-    fn read_number(&mut self) -> u32 {
+    /// Read a contiguous run of digits, preserving overflow as invalid input.
+    /// Substituting zero would make a malformed expression look legitimate.
+    fn read_number(&mut self) -> Token {
         let mut s = String::new();
         while let Some(&(_, ch)) = self.chars.peek() {
             if ch.is_ascii_digit() {
@@ -146,7 +152,10 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        s.parse().unwrap_or(0)
+        match s.parse::<u32>() {
+            Ok(n) => Token::Number(n),
+            Err(_) => Token::Invalid(format!("numeric component out of range: {s}")),
+        }
     }
 
     /// Read a contiguous word of alphanumeric characters, hyphens within
