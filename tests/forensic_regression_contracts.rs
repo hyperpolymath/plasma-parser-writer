@@ -108,6 +108,53 @@ fn reserved_action_does_not_silently_produce_a_pass() {
     );
 }
 
+#[test]
+fn rejects_reserved_action_even_if_its_condition_would_be_false() {
+    let p = policy_for(
+        Subject::Repo,
+        Condition::Not {
+            of: Box::new(Condition::True),
+        },
+        Resource::File {
+            path: "LICENSE".to_owned(),
+        },
+        ActionKind::ConsistentWith {
+            id: "external-decision".to_owned(),
+        },
+    );
+    let e = evaluate(&p, &facts(&["LICENSE"]));
+    assert_eq!(
+        e.findings.len(),
+        1,
+        "invalid policy must be rejected at admission"
+    );
+    assert_eq!(e.summary.errors, 1);
+    assert_eq!(e.findings[0].rule_id, "__policy_admission__");
+    assert_eq!(e.findings[0].status, FindingStatus::Violation);
+}
+
+#[test]
+fn rejects_reserved_release_subject_in_direct_evaluation() {
+    let p = policy_for(
+        Subject::Release {
+            tag: "v1.0.0".to_owned(),
+        },
+        Condition::True,
+        Resource::File {
+            path: "LICENSE".to_owned(),
+        },
+        ActionKind::Present,
+    );
+    let e = evaluate(&p, &facts(&["LICENSE"]));
+    assert_eq!(
+        e.findings.len(),
+        1,
+        "invalid subject must not vanish silently"
+    );
+    assert_eq!(e.summary.errors, 1);
+    assert_eq!(e.findings[0].status, FindingStatus::Violation);
+}
+
 // POSITIVE CONTROLS: active tests. These should PASS on the baseline.
 
 #[test]
