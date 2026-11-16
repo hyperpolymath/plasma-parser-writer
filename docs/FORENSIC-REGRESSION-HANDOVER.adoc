@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+= Plasma forensic regression test handover
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+
+== Purpose and authority
+
+* Baseline inspected: `hyperpolymath/plasma-parser-writer`, commit `d9998ab0d9b612c82ef782b75e0ea62703da1344` (2026-11-11).
+* Canonical governance is maintained by `metadatastician/standards`: DEED v2.0 ABNF (`1-formats/deed/spec/abnf/deed.abnf`), K9 component Nickel contract (`1-formats/k9/spec/contract/k9_contract.ncl`), K9 coordination v1.2 ABNF (`2-protocols/k9-coordination/spec/abnf/coordination-k9-grammar_v1.2.abnf`). No competing parser is introduced here.
+* No production-source changes; no remote branch or PR created; no `.deed` or `.k9` files rewritten.
+
+== File added
+
+`tests/forensic_regression_contracts.rs` -- six default tests (three current correctness regressions expected red, three baseline positive controls expected green) and four explicitly ignored forensic-mode requirements.
+
+== Running on an isolated branch or worktree
+
+[source,shell]
+----
+git switch -c test/plasma-forensic-contracts
+# apply plasma-regressions.patch using git apply --check && git apply
+cargo test --test forensic_regression_contracts -- --nocapture
+cargo test --test forensic_regression_contracts -- --ignored --nocapture
+cargo test --workspace
+----
+
+The first test command should expose current strictness failures (red): unexpected punctuation, integer overflow, and unvalidated reserved-action positive assurance. The `--ignored` command exercises the four design-changing forensic assertions; failures on v0 are expected and do NOT establish that the existing narrower policy-mode collector violates its documented contract.
+
+== Source findings underlying the negative controls
+
+* Lexer: `plasma-parser/src/spdx/lexer.rs`, lines 118-122 silently skip unknown characters; line 149 maps parse failure to 0.
+* Policy evaluator: `plasma-engine/src/eval.rs`, lines 344-349 maps `ConsistentWith` to a non-violation; `evaluate` accepts a raw Policy and schema validation is performed only through the loader.
+* Facts: `plasma-engine/src/facts.rs`, lines 72-79 skip dot-prefixed directories, and lines 91-98 discard some walking errors; collection has no content hashes.
+* Diff: `plasma-engine/src/diff.rs` compares file names, headers, metadata, and GitFacts but not content.
+* Conditions: `plasma-engine/src/eval.rs` lines 170-181 treat absent content as false; negating that boolean can create a true condition.
+* GitFacts: `plasma-engine/src/facts.rs` lines 169-185 preserve the symbolic HEAD ref but do not resolve its content hash.
+
+== Decisions still pending (do not invent semantics)
+
+* `Overlay.applies_to`: accepted by the schema, but unused by `effective_rules`. Its concrete selection semantics require an architecture decision before encoding a regression assertion.
+* Filesystem error handling: a portable deterministic unreadable-directory fixture needs a testable traversal abstraction, because root users can bypass ordinary permission checks.
+* Evidence-completeness / Unknown semantics: introduce a versioned forensic API rather than silently changing existing policy-mode truth tables.
+* Creusot+Pearlite: these tests are not proofs. After correcting contracts and production behaviour, prove deontic evaluation, admission and aggregation; validate the CI prover with a deliberately false control.
+
+== Sign-off rule
+
+Nothing is signed off as executed unless a real Cargo transcript, exit status and tool versions are recorded. The execution results for 2026-11-16 are recorded below. Keep each expected red case until a reviewed fix changes it to green, then run the complete workspace suite.
+
+== Execution receipts — 2026-11-16 (isolated WSL checkout)
+
+* Host: The-Titanic (WSL2 Linux); rustc 1.99.1, cargo 1.99.1, rustfmt 1.10.0.
+* Baseline: `d9998ab0d9b612c82ef782b75e0ea62703da1344`; local branch `test/plasma-forensic-contracts-20261116`.
+* Run 1: `cargo test --test forensic_regression_contracts -- --nocapture` → exit 101: three passing positive controls, three failing strictness regressions, four ignored.
+* Run 2: `cargo test --test forensic_regression_contracts -- --ignored --nocapture` → exit 101: four intentionally ignored forensic-mode targets each reproduced the current limitation.
+* Run 3: `cargo test --workspace -- --skip rejects_unrecognised_spdx_punctuation_instead_of_dropping_it --skip rejects_overflowing_spdx_number_instead_of_substituting_zero --skip reserved_action_does_not_silently_produce_a_pass` → exit 0; all other executed tests passed, with four forensic-mode targets ignored.
+* Logs stored on the same WSL host at `/tmp/plasma-regression-test-run-20261116.log`, `/tmp/plasma-regression-ignored-20261116.log`, and `/tmp/plasma-regression-workspace-20261116.log`.
+* The test-only source was formatted with `rustfmt --edition 2021`; neither production code nor `main` was edited. This is expected-red evidence, not a successful compliance gate.
