@@ -55,3 +55,22 @@ Nothing is signed off as executed unless a real Cargo transcript, exit status an
 * Run 3: `cargo test --workspace -- --skip rejects_unrecognised_spdx_punctuation_instead_of_dropping_it --skip rejects_overflowing_spdx_number_instead_of_substituting_zero --skip reserved_action_does_not_silently_produce_a_pass` → exit 0; all other executed tests passed, with four forensic-mode targets ignored.
 * Logs stored on the same WSL host at `/tmp/plasma-regression-test-run-20261116.log`, `/tmp/plasma-regression-ignored-20261116.log`, and `/tmp/plasma-regression-workspace-20261116.log`.
 * The test-only source was formatted with `rustfmt --edition 2021`; neither production code nor `main` was edited. This is expected-red evidence, not a successful compliance gate.
+
+== Repair receipts — 2026-11-16 (persistent local branch)
+
+* The baseline was preserved from the temporary checkout into `/home/hyperpolymath/repos/plasma-parser-writer`, branch `test/plasma-forensic-contracts-20261116`. GitHub main was not modified.
+* `dccbc41` — regression tests and original observed-failure handover.
+* `531077b` — correct overflow negative control to use `Apache-4294967296.9`, avoiding an innocent minor-version zero.
+* `02e55d8` — reject unrecognised SPDX characters and numeric token overflow without silently changing the parsed expression.
+* `76f1c36` — fail closed at direct `evaluate` admission for unvalidated raw policies, including reserved actions and unsupported release subjects. Two additional negative tests cover a false condition and an unsupported subject.
+* Post-fix `cargo test --test forensic_regression_contracts -- --nocapture`: **8 passed, 0 failed, 4 ignored**.
+* Post-fix `cargo test --workspace`: **exit 0**, all enabled workspace unit, integration and doc tests pass.
+* `cargo fmt --all -- --check`: **exit 0**.
+* `cargo clippy --workspace --all-targets -- -D warnings`: **exit 0**.
+* The four ignored forensic-mode targets remain open and were previously executed with `--ignored`, reproducing the initial limitations. They require an explicitly versioned forensic contract and must not be marked green.
+* Creusot/Pearlite proofs were **not run or added**; this phase supplies executable regression evidence, not formal verification.
+* All local commits use SSH signatures from the loaded agent key. The local verifier reports a mathematically good signature but `No principal matched` in the user's current allowed-signers file; external GitHub signature-verification status is not established until publication. The configured signing requirement was not disabled.
+* No `.deed` or `.k9` file was rewritten. Follow-up migration must use the canonical DEED grammar and K9/coordination validators in `metadatastician/standards`.
+* No push, pull request, merge, licensing change or changes to remote branch rulesets were performed.
+
+Next steps: decide and implement the independent forensic evidence schema for content hashes, Git commit resolution, coverage and Unknown status. Clarify `Overlay.applies_to` semantics before formally proving overlay applicability; then add Creusot+Pearlite proof obligations with independent negative-proof controls.
