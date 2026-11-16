@@ -71,13 +71,13 @@ fn rejects_unrecognised_spdx_punctuation_instead_of_dropping_it() {
 
 #[test]
 fn rejects_overflowing_spdx_number_instead_of_substituting_zero() {
-    let tokens = Lexer::new("Apache-4294967296.0").tokenize();
+    let tokens = Lexer::new("Apache-4294967296.9").tokenize();
     assert!(
         !tokens.iter().any(|token| matches!(token, Token::Number(0))),
         "overflow silently became Number(0): {tokens:?}"
     );
     assert!(
-        parse_spdx_expr("Apache-4294967296.0").is_err(),
+        parse_spdx_expr("Apache-4294967296.9").is_err(),
         "overflowing numeric component must reject rather than admit a different identifier"
     );
 }
