@@ -220,10 +220,84 @@ fn normalized_relative(root: &Path, path: &Path) -> Option<String> {
     Some(segments.join("/"))
 }
 
+/// Resolve every component through an owned directory handle. Non-Unix
+/// platforms fail closed until an equivalent no-follow implementation exists.
+#[cfg(unix)]
+fn open_directory(path: &Path) -> io::Result<File> {
+    use rustix::fs::{open, openat, Mode, OFlags};
+    use std::path::Component;
+    let flags = OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
+    let mut dir = File::from(open(".", flags, Mode::empty())?);
+    for component in path.components() {
+        let name = match component {
+            Component::RootDir => Path::new("/"),
+            Component::CurDir => continue,
+            Component::ParentDir => Path::new(".."),
+            Component::Normal(name) => Path::new(name),
+            _ => return Err(io::ErrorKind::InvalidInput.into()),
+        };
+        dir = File::from(openat(&dir, name, flags, Mode::empty())?);
+    }
+    Ok(dir)
+}
+
+#[cfg(not(unix))]
+fn open_directory(_: &Path) -> io::Result<File> {
+    Err(io::ErrorKind::Unsupported.into())
+}
+
+#[cfg(unix)]
+fn open_relative(dir: &File, relative: &Path) -> io::Result<File> {
+    use rustix::fs::{openat, Mode, OFlags};
+    let mut dir = dir.try_clone()?;
+    let mut parts = relative.components().peekable();
+    while let Some(part) = parts.next() {
+        let std::path::Component::Normal(name) = part else {
+            return Err(io::ErrorKind::InvalidInput.into());
+        };
+        let mut flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
+        if parts.peek().is_some() {
+            flags |= OFlags::DIRECTORY;
+        }
+        dir = File::from(openat(&dir, name, flags, Mode::empty())?);
+    }
+    if !dir.metadata()?.is_file() {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    Ok(dir)
+}
+
+#[cfg(not(unix))]
+fn open_relative(_: &File, _: &Path) -> io::Result<File> {
+    Err(io::ErrorKind::Unsupported.into())
+}
+
+fn same_file(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if before.dev() != after.dev() || before.ino() != after.ino() {
+            return false;
+        }
+    }
+    before.is_file()
+        && after.is_file()
+        && before.len() == after.len()
+        && before.modified().ok() == after.modified().ok()
+}
+
 /// SHA-256 digest of exact bytes with bounded memory, not a text decoding.
-fn hash_regular_file(path: &Path) -> Result<(u64, String), IssueKind> {
+fn hash_regular_file(
+    root: &File,
+    relative: &Path,
+    path: &Path,
+) -> Result<(u64, String), IssueKind> {
     let before = fs::symlink_metadata(path).map_err(|_| IssueKind::ReadFailed)?;
-    let mut file = File::open(path).map_err(|_| IssueKind::ReadFailed)?;
+    let mut file = open_relative(root, relative).map_err(|_| IssueKind::ReadFailed)?;
+    let opened = file.metadata().map_err(|_| IssueKind::ReadFailed)?;
+    if !same_file(&before, &opened) {
+        return Err(IssueKind::ChangedDuringRead);
+    }
     let mut hasher = Sha256::new();
     let mut buffer = [0_u8; 64 * 1024];
     let mut size = 0_u64;
@@ -236,7 +310,10 @@ fn hash_regular_file(path: &Path) -> Result<(u64, String), IssueKind> {
         hasher.update(&buffer[..n]);
     }
     let after = fs::symlink_metadata(path).map_err(|_| IssueKind::ReadFailed)?;
-    if !after.is_file()
+    if !same_file(
+        &before,
+        &file.metadata().map_err(|_| IssueKind::ReadFailed)?,
+    ) || !same_file(&before, &after)
         || size != before.len()
         || size != after.len()
         || before.modified().ok() != after.modified().ok()
@@ -259,6 +336,7 @@ pub fn collect_forensic(root: &Path) -> Result<ForensicSnapshot, ForensicError> 
         return Err(ForensicError::InvalidRoot(root.display().to_string()));
     }
 
+    let root_handle = open_directory(root)?;
     let mut paths = BTreeMap::new();
     let mut excluded_paths = BTreeSet::new();
     let mut issues = Vec::new();
@@ -310,7 +388,7 @@ pub fn collect_forensic(root: &Path) -> Result<ForensicSnapshot, ForensicError> 
                 continue;
             }
         };
-        if entry.depth() == 0 || entry.file_type().is_dir() {
+        if entry.depth() == 0 {
             continue;
         }
         let Some(path) = normalized_relative(root, entry.path()) else {
@@ -320,8 +398,11 @@ pub fn collect_forensic(root: &Path) -> Result<ForensicSnapshot, ForensicError> 
             });
             continue;
         };
+        if entry.file_type().is_dir() {
+            continue;
+        }
         let evidence = if entry.file_type().is_file() {
-            match hash_regular_file(entry.path()) {
+            match hash_regular_file(&root_handle, Path::new(&path), entry.path()) {
                 Ok((size, sha256)) => PathEvidence::Regular { size, sha256 },
                 Err(reason) => {
                     issues.push(ObservationIssue {
@@ -392,44 +473,39 @@ fn valid_oid(value: &str) -> bool {
 /// Read only a regular administrative file without following any symbolic
 /// link in its path. A repository must not redirect the auditor outside its
 /// declared Git directory using malicious ref or HEAD symlinks.
-fn read_git_text(dir: &Path, relative: &str) -> Option<String> {
-    let mut path = dir.to_path_buf();
-    for part in Path::new(relative).components() {
-        let std::path::Component::Normal(name) = part else {
-            return None;
-        };
-        path.push(name);
-        let metadata = fs::symlink_metadata(&path).ok()?;
-        if metadata.file_type().is_symlink() {
-            return None;
-        }
+fn read_git_text(dir: &File, relative: &str) -> io::Result<String> {
+    let mut file = open_relative(dir, Path::new(relative))?;
+    let before = file.metadata()?;
+    let mut text = String::new();
+    file.read_to_string(&mut text)?;
+    if !same_file(&before, &file.metadata()?) {
+        return Err(io::ErrorKind::InvalidData.into());
     }
-    if !fs::symlink_metadata(&path).ok()?.is_file() {
-        return None;
-    }
-    fs::read_to_string(path).ok()
+    Ok(text)
 }
 
-fn read_reference(dir: &Path, reference: &str) -> Option<String> {
+fn read_reference(dir: &File, reference: &str) -> Option<String> {
     // Ref names are untrusted repository content; disallow absolute paths,
     // traversal, empty segments and special components.
     if !reference.starts_with("refs/")
         || !reference
             .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"._-/".contains(&byte))
+            .all(|byte| byte > b' ' && byte != 127 && !b"~^:?*[\\".contains(&byte))
         || reference
             .split('/')
             .any(|s| s.is_empty() || s == "." || s == ".." || s.starts_with('.'))
     {
         return None;
     }
-    if let Some(oid) = read_git_text(dir, reference) {
-        let oid = oid.trim();
-        if valid_oid(oid) {
-            return Some(oid.to_owned());
+    match read_git_text(dir, reference) {
+        Ok(oid) => {
+            let oid = oid.trim();
+            return valid_oid(oid).then(|| oid.to_owned());
         }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(_) => return None,
     }
-    let packed = read_git_text(dir, "packed-refs")?;
+    let packed = read_git_text(dir, "packed-refs").ok()?;
     packed
         .lines()
         .filter(|line| !line.starts_with('#') && !line.starts_with('^'))
@@ -457,9 +533,18 @@ fn read_git_head(root: &Path) -> GitHead {
             reason: GitProblem::ExternalGitDirectory,
         };
     }
-    let head = match read_git_text(&dotgit, "HEAD") {
-        Some(head) => head,
-        None => {
+    let dir = match open_directory(&dotgit) {
+        Ok(dir) => dir,
+        Err(_) => {
+            return GitHead::Unknown {
+                reference: None,
+                reason: GitProblem::UnreadableHead,
+            }
+        }
+    };
+    let head = match read_git_text(&dir, "HEAD") {
+        Ok(head) => head,
+        Err(_) => {
             return GitHead::Unknown {
                 reference: None,
                 reason: GitProblem::UnreadableHead,
@@ -469,7 +554,7 @@ fn read_git_head(root: &Path) -> GitHead {
     let head = head.trim();
     if let Some(reference) = head.strip_prefix("ref: ") {
         let reference = reference.to_owned();
-        return match read_reference(&dotgit, &reference) {
+        return match read_reference(&dir, &reference) {
             Some(commit) => GitHead::Resolved {
                 reference: Some(reference),
                 commit,
@@ -490,5 +575,49 @@ fn read_git_head(root: &Path) -> GitHead {
             reference: None,
             reason: GitProblem::InvalidHead,
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod handle_tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn refuses_final_and_parent_symlinks_before_reading() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("file"), "redirected").unwrap();
+        let root = open_directory(temp.path()).unwrap();
+        symlink(outside.path().join("file"), temp.path().join("file")).unwrap();
+        symlink(outside.path(), temp.path().join("parent")).unwrap();
+        assert!(open_relative(&root, Path::new("file")).is_err());
+        assert!(open_relative(&root, Path::new("parent/file")).is_err());
+        assert!(read_git_text(&root, "file").is_err());
+        assert!(read_git_text(&root, "parent/file").is_err());
+    }
+
+    #[test]
+    fn pinned_directory_survives_path_replacement() {
+        let temp = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::create_dir(temp.path().join("git")).unwrap();
+        fs::write(temp.path().join("git/HEAD"), "original").unwrap();
+        fs::write(outside.path().join("HEAD"), "redirected").unwrap();
+        let dir = open_directory(&temp.path().join("git")).unwrap();
+        fs::rename(temp.path().join("git"), temp.path().join("saved")).unwrap();
+        symlink(outside.path(), temp.path().join("git")).unwrap();
+        assert_eq!(read_git_text(&dir, "HEAD").unwrap(), "original");
+    }
+
+    #[test]
+    fn detects_replacement_even_with_matching_length() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("file");
+        fs::write(&path, "old").unwrap();
+        let before = fs::symlink_metadata(&path).unwrap();
+        fs::rename(&path, temp.path().join("old")).unwrap();
+        fs::write(&path, "new").unwrap();
+        assert!(!same_file(&before, &fs::metadata(path).unwrap()));
     }
 }

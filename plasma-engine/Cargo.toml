@@ -21,5 +21,8 @@ regex = "1"
 sha2 = "0.10"
 thiserror = "2"
 
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
+
 [dev-dependencies]
 tempfile = "3"

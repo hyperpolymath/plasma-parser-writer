@@ -335,6 +335,7 @@ dependencies = [
  "glob",
  "plasma-parser",
  "regex",
+ "rustix",
  "serde",
  "serde_json",
  "sha2",

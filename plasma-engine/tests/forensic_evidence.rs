@@ -285,3 +285,83 @@ fn sha256_matches_published_known_answer() {
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     );
 }
+
+#[test]
+fn resolves_plus_branch_from_loose_and_packed_refs() {
+    for packed in [false, true] {
+        let temp = tempdir().unwrap();
+        let git = temp.path().join(".git");
+        write(&git.join("HEAD"), "ref: refs/heads/topic+fix\n");
+        let oid = "a".repeat(40);
+        if packed {
+            write(
+                &git.join("packed-refs"),
+                format!("{oid} refs/heads/topic+fix\n"),
+            );
+        } else {
+            write(&git.join("refs/heads/topic+fix"), &oid);
+        }
+        assert_eq!(
+            collect_forensic(temp.path()).unwrap().git,
+            GitHead::Resolved {
+                reference: Some("refs/heads/topic+fix".into()),
+                commit: oid,
+            }
+        );
+    }
+}
+
+#[test]
+fn malformed_loose_ref_does_not_fall_back_to_packed() {
+    let temp = tempdir().unwrap();
+    let git = temp.path().join(".git");
+    write(&git.join("HEAD"), "ref: refs/heads/main\n");
+    write(&git.join("refs/heads/main"), "invalid");
+    write(
+        &git.join("packed-refs"),
+        format!("{} refs/heads/main\n", "a".repeat(40)),
+    );
+    assert!(matches!(
+        collect_forensic(temp.path()).unwrap().git,
+        GitHead::Unknown { .. }
+    ));
+}
+
+#[cfg(unix)]
+#[test]
+fn refused_loose_refs_do_not_fall_back_to_packed() {
+    use std::os::unix::fs::symlink;
+    for dangling in [false, true] {
+        let temp = tempdir().unwrap();
+        let git = temp.path().join(".git");
+        write(&git.join("HEAD"), "ref: refs/heads/main\n");
+        write(
+            &git.join("packed-refs"),
+            format!("{} refs/heads/main\n", "a".repeat(40)),
+        );
+        fs::create_dir_all(git.join("refs/heads")).unwrap();
+        let target = temp.path().join("target-ref");
+        if !dangling {
+            write(&target, "b".repeat(40));
+        }
+        symlink(&target, git.join("refs/heads/main")).unwrap();
+        assert!(matches!(
+            collect_forensic(temp.path()).unwrap().git,
+            GitHead::Unknown { .. }
+        ));
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn invalid_utf8_empty_directory_marks_scope_incomplete() {
+    use std::os::unix::ffi::OsStrExt;
+    let temp = tempdir().unwrap();
+    fs::create_dir(temp.path().join(std::ffi::OsStr::from_bytes(b"bad-\xff"))).unwrap();
+    let snapshot = collect_forensic(temp.path()).unwrap();
+    assert!(!snapshot.scope_complete);
+    assert!(snapshot
+        .issues
+        .iter()
+        .any(|issue| issue.kind == plasma_engine::forensic::IssueKind::InvalidUtf8Path));
+}
