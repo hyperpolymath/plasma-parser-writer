@@ -1,39 +1,78 @@
-== PROOF-NEEDS.md — palimpsest-plasma
+= PROOF-NEEDS — palimpsest-plasma
+:toc: preamble
 
-=== Current State
+What this repository needs proved, which verifier each obligation belongs
+to, and where each one stands. Verifier choices follow
+https://github.com/hyperpolymath/standards/blob/main/3-practice/PROOF-POLICY.adoc[PROOF-POLICY]:
+first-party Rust is verified with *Creusot* (contracts written in *Pearlite*,
+Creusot's specification language) and with *Verus*, both by default (§1.2);
+*Idris2* is for APIs and ABIs. Status words are the closed §5 vocabulary.
 
-* **src/abi/*.idr**: NO
-* *Dangerous patterns*: 18 `+unwrap()+` in Rust code
-* *LOC*: ~6,900 (Rust)
-* *ABI layer*: Missing
+== Current state
 
-=== What Needs Proving
+* *Machine-checked proofs:* none. No crate has a Pearlite contract
+  (`#[requires]`/`#[ensures]`) or Verus code (`verus!`).
+* *Creusot:* `.github/workflows/creusot-gate.yml` calls the estate gate. With
+  no contracts in the tree it reports "nothing was proved"; that is a notice,
+  not assurance.
+* *Verus:* no gate yet.
+* *Idris2:* no ABI is exposed, so no Idris2 obligation exists today.
+* *Census:* https://github.com/hyperpolymath/mathesis[mathesis] lists this
+  repository with no proof files of its own, which matches the above.
+* *Panic sites:* 69 `unwrap()` calls outside tests (2026-11-17).
 
-[width="100%",cols="51%,27%,22%",options="header",]
+== Obligations
+
+Every obligation is on first-party Rust, so each is planned for both
+default verifiers. None has a contract yet.
+
+[cols="2,3,2,2,1",options="header"]
 |===
-|Component |What |Why
-|SPDX parser correctness |Parser accepts all valid SPDX expressions and
-rejects invalid ones |Wrong SPDX parsing causes license
-misidentification
+|Obligation |Entrypoint |Creusot (Pearlite) |Verus |Status
 
-|License family registry |Family classification is complete and
-consistent |Misclassified licenses create compliance risk
+|SPDX expression parsing is sound and complete for the SPDX 2.3 expression
+grammar: it accepts every valid expression and rejects every invalid one.
+|`plasma_parser::spdx::parse_spdx_expr`
+|Pearlite model of the grammar; `ensures` relating the `SpdxExpr` result
+to that model
+|The same property as a Verus spec over the lexer and parser
+|`OPEN`
 
-|Union policy parser |Policy composition preserves individual license
-requirements |Composed policies must not lose restrictions
+|The licence family registry is complete and consistent: every variant has
+exactly one entry, and published variants are a subset.
+|`plasma_parser::family::registry::{lookup_variant, all_variants, published_variants}`
+|`ensures` on the lookup functions over the static table
+|Verus spec over the same table
+|`OPEN`
 
-|Content audit |Audit detection is sound (no false negatives) |Missed
-license violations create legal exposure
+|Licence zone composition keeps each zone's requirements: overlapping zones
+are always reported, and a file maps to at most one zone.
+|`plasma_parser::zone::policy::{assign_zone, detect_overlaps, validate_zones}`
+|Pearlite predicates for zone coverage and overlap
+|Verus spec for the same predicates
+|`OPEN`
+
+|Content audit has no false negatives for the licence texts it claims to
+recognise.
+|`plasma_parser::audit::content::detect_license_from_content`
+|Contracts for the matching functions, with the recognised set as a model
+|Verus spec, or a bounded check recorded as `TESTED`
+|`OPEN`
 |===
 
-=== Recommended Prover
+*Note:* an earlier version of this file listed a "union policy parser". No
+such parser exists in the tree. The zone row above covers the composition
+property it described.
 
-*Idris2* — Create `+src/abi/+` with SPDX expression grammar proofs
-(completeness and soundness). License family classification could use
-algebraic data types with exhaustive matching.
+== Next actions
 
-=== Priority
+. Add Pearlite contracts to `parse_spdx_expr` first; it carries the highest
+  risk, because a wrong parse misidentifies a licence.
+. Add a Verus gate beside the Creusot gate, so both default verifiers run.
+. Record each result here with the tool and solver versions, the revision
+  and the trust boundary (PROOF-POLICY §1.2, §5–§7).
 
-*LOW* — License parsing and auditing tool. The 18 unwrap() calls should
-be addressed, but the overall risk is limited to incorrect license
-reports.
+== Priority
+
+*Low.* This is a licence parsing and auditing tool. A fault produces a wrong
+report rather than unsafe behaviour.
