@@ -38,15 +38,22 @@ to that model
 |The same property as a Verus spec over the lexer and parser
 |`OPEN`
 
-|The licence family registry is complete and consistent: every variant has
-exactly one entry, and published variants are a subset.
+|The licence family registry is complete and consistent over the six named
+variants (`PMPL`, `PAGPL`, `PGPL`, `PAPL`, `PBSD`, `PEUPL`): each has exactly
+one entry, `published_variants` is a subset of `all_variants`, and
+`lookup_variant` returns `None` for every `PalimpsestVariant::Other(_)`.
 |`plasma_parser::family::registry::{lookup_variant, all_variants, published_variants}`
 |`ensures` on the lookup functions over the static table
 |Verus spec over the same table
 |`OPEN`
 
-|Licence zone composition keeps each zone's requirements: overlapping zones
-are always reported, and a file maps to at most one zone.
+|Licence zone assignment is specified for overlaps. `assign_zone` returns the
+first zone, in declaration order, with a matching pattern, so a file in two
+zones silently gets the first one's requirements. The obligation is that
+`detect_overlaps` reports every file that matches more than one zone, so no
+silent first-match is left unreported. `validate_zones` reports duplicate
+zone names. Open question for the owner: should an invalid glob, which both
+functions skip without error, be reported?
 |`plasma_parser::zone::policy::{assign_zone, detect_overlaps, validate_zones}`
 |Pearlite predicates for zone coverage and overlap
 |Verus spec for the same predicates
