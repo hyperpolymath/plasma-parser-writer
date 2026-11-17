@@ -68,8 +68,12 @@ recognise.
 |===
 
 *Note:* an earlier version of this file listed a "union policy parser". No
-such parser exists in the tree. The zone row above covers the composition
-property it described.
+such parser exists in the tree. The property it described, that a file in
+several zones meets every one of their licence requirements, is not what the
+zone row covers: the code assigns the first matching zone and only reports
+the overlap. Whether overlapping zones should instead combine their
+requirements, or be rejected outright, is a design decision for the owner;
+until it is made, that property has no obligation here.
 
 == Next actions
 
