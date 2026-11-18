@@ -68,3 +68,67 @@ future project; the earlier union-policy-parser sub-project was removed
 * Decision registries (`consistent-with` action semantics)
 * Multi-repo fleet evaluation
 * Policy authoring assistance (schema-aware, never semantics-defining)
+
+== Position 2026-11-18
+
+Position of the thread "workflow and Codeac fixes, then estate-wide follow-up"
+(branch `claude/workflow-codeac-fixes-e4yfy0`).
+
+=== What this thread did
+
+* Fixed the workflow failure and the Codeac check from #106. The fixes were
+  then swept across the estate in 12 PRs, all merged.
+* Rewrote `PROOF-NEEDS.adoc` against the estate PROOF-POLICY: Creusot (with
+  Pearlite) and Verus for the Rust obligations, and the closed status
+  vocabulary. The registry obligation covers only the six named variants. The
+  zone obligation states that `assign_zone` takes the first match, and that
+  `detect_overlaps` must report every file in more than one zone.
+* Deleted the identity-remint clause from `.machine_readable/CLADE.a2ml`,
+  which contradicts ruling U1.
+* Across other repositories:
+** Idris2 ABI CI gates for nimiser, tlaiser, mylangiser and iseriser:
+   totality set in each `.ipkg`, holes and escape hatches refused, and every
+   module required in the package list.
+** K9 validator fixes in k9-ecosystem.
+** Proof-status corrections in proof-of-work.
+
+=== Where it stands
+
+In progress. Every open PR is waiting on review or merge, or on a failure that
+is also on its base branch. No code work is pending in this thread.
+
+=== Open PRs and branches
+
+* plasma-parser-writer#116 (`claude/workflow-codeac-fixes-e4yfy0`). All
+  checks green; waiting for an approving review.
+* Merged since this section was first written (2026-11-19/20): nimiser#95,
+  tlaiser#99, mylangiser#101 and iseriser#147 (the Idris2 ABI CI gates).
+* k9-ecosystem#51 (`fix/validator-bot-findings`). Auto-merge is on. Two
+  checks also fail on `main`: `governance-validation` and
+  `membership-integrity`.
+* catachresis-colloquium/proof-of-work#162
+  (`docs/proof-needs-policy-vocabulary`). `lint-workflows` fails on `main`
+  as well (it expects SPDX on line 1).
+
+=== What the owner must decide
+
+. Zone overlaps in this repository: combine the zones' requirements or reject
+  the overlap. Also whether an invalid glob should be reported.
+. k9-ecosystem `main`: the empty `.gitmodules` members, and the 48 `.a2ml`
+  files with no SPDX line (move them to deeds rather than add SPDX lines).
+. proof-of-work:
+** I6 and I7 trust choices.
+** The two postulates that yield `Void`.
+** The vacuous `Solvable`.
+** The unpinned `snazzybucket/idris2:latest` image.
+** Rewrite or retire `RUST-SPARK-STANCE.adoc`.
+. bunsenite: a huge-exponent number literal aborts the parse.
+. k9-ecosystem: the idrisiser-generated package does not compile.
+
+=== Next steps, in order
+
+. Review and merge the open PRs above.
+. Once k9-ecosystem#51 merges, re-sync `validate-k9.sh` into iseriser,
+  mylangiser, nimiser, tlaiser (`.githooks`) and llm-grace.
+. Add Pearlite contracts to `plasma_parser::spdx::parse_spdx_expr`, then
+  add a Verus gate beside the Creusot gate.
