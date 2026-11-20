@@ -93,7 +93,9 @@ pub fn builtin_repo_hygiene() -> Policy {
 }
 
 /// Validate a parsed policy against v0 evaluability rules.
-fn validate(policy: &Policy) -> Result<(), SchemaError> {
+/// Kept within the crate so the public evaluator can reject raw policies
+/// constructed without passing through `load_policy_str`.
+pub(crate) fn validate(policy: &Policy) -> Result<(), SchemaError> {
     if policy.schema_version != SCHEMA_VERSION {
         return Err(SchemaError::UnsupportedSchemaVersion {
             found: policy.schema_version,

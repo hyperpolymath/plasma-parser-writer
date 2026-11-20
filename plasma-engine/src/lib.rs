@@ -23,6 +23,7 @@ pub mod diff;
 pub mod eval;
 pub mod facts;
 pub mod finding;
+pub mod forensic;
 pub mod report;
 pub mod schema;
 

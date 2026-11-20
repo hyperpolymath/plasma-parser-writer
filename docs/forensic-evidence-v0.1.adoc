@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+= Plasma forensic evidence contract v0.1 (experimental)
+:toc:
+
+== Purpose
+
+This opt-in evidence model is separate from v0 policy `FactSet`,
+`plasma facts`, `plasma diff`, and the existing boolean policy evaluator.
+Those contracts retain their current semantics and wire formats.
+
+The model answers a narrower question: "what repository bytes and Git HEAD
+identity were actually observed, and was the bounded observation complete?"
+It does not claim that observing a tree means every governance rule passes.
+
+== Seams and authorities
+
+[cols="1,3,3",options="header"]
+|===
+| Seam | Authority | Evidence and guarantee
+| S-01 Scope | Forensic scanner options | Dot-prefixed governance paths are included. `.git`, `target`, `node_modules`, `vendor`, `_build`, and `deps` are excluded *explicitly* as directory entries. Exclusions are reported, not silently erased.
+| S-02 Content | SHA-256 over bytes of every in-scope regular file | Streaming hash and byte count. A same-path edit with unchanged SPDX header must change the observed digest, subject to SHA-256 collision assumptions and stable input during read.
+| S-03 Git | `.git/HEAD` plus loose or packed ref resolution | Symbolic ref and resolved commit object ID recorded separately. Git object IDs are *identity*, not a substitute for SHA-256 content integrity. Unresolvable Git state remains unknown.
+| S-04 Completeness | Typed observation status and issues | An unreadable path, traversal failure, invalid UTF-8 path, unsupported file type or detected concurrent write blocks a claim of complete in-scope observation. Intentional exclusions do not vanish; complete means only "for the declared scope."
+| S-05 Epistemic status | Explicit three-valued evidence truth | True, False and Unknown; negating Unknown remains Unknown. This is NOT inserted into the legacy policy evaluator without an explicit version migration.
+|===
+
+== Boundary discipline
+
+* `collect_forensic(root)` is read-only: no file writes, git commands,
+  process execution, network, signature checks or remediation.
+* No timestamps or ambient randomness are serialized. BTree ordering is
+  canonical. `root` is informational and may differ between checkouts.
+* Symlinks are recorded by their link target and never followed outside
+  the root. Unknown or non-UTF-8 targets are explicit issues.
+* A path not safely representable as UTF-8 is not silently accepted under a
+  lossy identifier: observation is marked incomplete.
+* SHA-256 records observations, not a transactional filesystem snapshot.
+  Concurrent writes cannot be completely ruled out without filesystem or
+  Git-object snapshot isolation. A detected metadata change during read
+  invalidates that file's observation.
+* The format identifies a schema version. Consumers must reject unsupported
+  versions and must not interpret missing/unknown evidence as a clean pass.
+* The existing `FactSet` and `FactsDiff` retain their legacy semantics:
+  this version does NOT change their JSON, CLI, or policy-mode behaviour.
+* DEED and K9 syntax must be validated against the existing standards
+  conformance tools; this module must not implement competing grammars.
+
+== Invariants and tests
+
+. Full in-scope file-body mutations are visible even when paths, lengths, SPDX
+  headers and symbolic Git ref remain the same.
+. `.github`, `.machine_readable` and other dot-prefixed governance paths
+  remain observable; `.git` internals remain explicitly out of scope.
+. Missing or unreadable evidence cannot yield a complete in-scope verdict.
+. Changes to a resolved Git HEAD object ID are visible even if the branch
+  name does not change; detached HEAD and packed refs have defined behaviour.
+. Repeated scans over stable inputs produce byte-identical JSON; diffs are
+  ordered and root-location-independent.
+. Symlinks are not dereferenced; changes to a link target path are visible.
+. The three-valued algebra preserves Unknown under negation and propagates it
+  according to strong Kleene conjunction/disjunction.
+
+== Non-goals and outstanding decisions
+
+* No rewriting of the legacy `plasma diff` command.
+* No global proof of all repository files if generated directories are
+  intentionally excluded; coverage must always be interpreted with scope.
+* No guarantee against concurrently mutated files beyond observed metadata
+  stability; stronger consistency requires Git tree or filesystem snapshot
+  capture with a separate contract.
+* No `Overlay.applies_to` semantics here; establish an ADR separately before
+  formalising an overlay theorem.
+* No formal Creusot/Pearlite assurance yet; these are testable contracts
+  and proof candidates, not completed deductive proofs.
+
+== Integration and release gate
+
+This module is library-only in v0.1, with ordinary Rust unit tests. Before
+exposing it to bots as a normative auditor, require:
+* A versioned JSON schema / compatibility and negative fixture suite.
+* A CLI with explicit `--forensic` mode and nonzero/Unknown exit semantics.
+* A bounded scan of representative real repositories, including worktrees,
+  large files, governance files, symlinks and concurrency experiments.
+* Independent review of error, exclusion, Git and SHA-256 handling.
+* Creusot+Pearlite obligations on pure evidence comparisons and admission.
+* No automatic repair and no change to production policy mode.
+
+== Local implementation receipt — 2026-11-16
+
+* Baseline: `879c813d3e3673a8183a0dfad4c767c651655863` on branch
+  `test/plasma-forensic-contracts-20261116`.
+* Implementation: `plasma-engine/src/forensic.rs`; integration fixtures:
+  `plasma-engine/tests/forensic_evidence.rs`.
+* New dependency: RustCrypto `sha2` 0.10.9, locked in `Cargo.lock`;
+  SHA-256 is used for byte observations. Git OIDs remain identity only.
+* New APIs are library-only, separately versioned `0.1.0`. Legacy
+  `FactSet`, `FactsDiff`, `evaluate` and CLI semantics were not changed.
+* `cargo test -p plasma-engine --test forensic_evidence --offline`:
+  14 passed, 0 failed; hidden governance paths, binary bytes, same-length
+  source mutations, normal/detached/packed Git HEAD, external Gitdir refusal,
+  symlink refusal, unknown paths/types and three-valued evidence.
+* `cargo test --workspace --offline`: exit 0. Existing forensic-mode
+  legacy assertions remain 4 ignored, pending a versioned CLI integration.
+* `cargo fmt --all -- --check`: exit 0.
+* `cargo clippy --workspace --all-targets --offline -- -D warnings`:
+  exit 0.
+* Explicit limitations: Git worktree external pointer files result in
+  `Unknown` rather than dereferencing external paths; filesystem reads
+  are not atomic; excluded paths appear in `excluded_paths`; an
+  in-scope complete scan does not imply that the Git identity was resolved.
+* No remote push, PR, production deployment, trust-policy bypass, DEED/K9
+  migration, or formal deductive-proof execution was performed.
