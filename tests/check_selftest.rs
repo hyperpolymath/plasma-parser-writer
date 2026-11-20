@@ -72,3 +72,54 @@ fn policy_validate_accepts_bundled_policy() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+#[test]
+fn check_collects_prose_headers_for_matching_globs() {
+    let repo = tempfile::tempdir().unwrap();
+    let docs = repo.path().join("docs");
+    std::fs::create_dir(&docs).unwrap();
+    std::fs::write(
+        docs.join("guide.md"),
+        "<!-- SPDX-License-Identifier: MPL-2.0 -->\n",
+    )
+    .unwrap();
+    std::fs::write(
+        docs.join("reference.adoc"),
+        "// SPDX-License-Identifier: MPL-2.0\n",
+    )
+    .unwrap();
+    let policy = repo.path().join("policy.toml");
+
+    for (pattern, passes) in [("docs/**", 2), ("docs/*.md", 1), ("docs/*.m[d]", 1)] {
+        std::fs::write(
+            &policy,
+            format!(
+                r#"
+schema_version = {{ major = 0, minor = 1 }}
+id = "prose-headers"
+version = {{ major = 0, minor = 1 }}
+
+[[rules]]
+id = "prose-header-required"
+modality = "obligation"
+subject = {{ type = "file-pattern", patterns = ["{pattern}"] }}
+resource = {{ type = "header" }}
+action = {{ type = "present" }}
+"#
+            ),
+        )
+        .unwrap();
+
+        let output = plasma()
+            .arg("check")
+            .arg(repo.path())
+            .arg("--policy")
+            .arg(&policy)
+            .args(["--format", "json"])
+            .output()
+            .unwrap();
+        let evaluation: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert!(output.status.success(), "{pattern}: {evaluation}");
+        assert_eq!(evaluation["summary"]["passes"], passes, "{pattern}");
+    }
+}
