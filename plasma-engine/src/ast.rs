@@ -211,6 +211,34 @@ impl Policy {
     }
 }
 
+impl Policy {
+    /// Whether any rule checks the header of a prose file (`.adoc`, `.md`),
+    /// so callers know to collect prose headers before evaluating.
+    pub fn needs_prose_headers(&self) -> bool {
+        let added = self
+            .overlays
+            .iter()
+            .flat_map(|o| &o.effects)
+            .flat_map(|e| match e {
+                OverlayEffect::AddRules { rules } => rules.as_slice(),
+                _ => &[],
+            });
+        self.rules
+            .iter()
+            .chain(added)
+            .filter(|r| matches!(r.resource, Resource::Header))
+            .any(|r| match &r.subject {
+                Subject::File { path } => is_prose_path(path),
+                Subject::FilePattern { patterns } => patterns.iter().any(|p| is_prose_path(p)),
+                _ => false,
+            })
+    }
+}
+
+fn is_prose_path(p: &str) -> bool {
+    p.ends_with(".adoc") || p.ends_with(".md")
+}
+
 fn condition_needs_content(c: &Condition) -> bool {
     match c {
         Condition::FileMatchesPattern { .. } => true,

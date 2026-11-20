@@ -18,6 +18,10 @@ pub const AUDITABLE_EXTENSIONS: &[&str] = &[
     "sh", "bash", "zsh", "toml", "yaml", "yml", "ncl", "nix", "scm", "v", "ada", "adb", "ads",
 ];
 
+/// Prose file extensions. Not audited by `plasma audit`; their headers are
+/// collected into facts only when a policy asks for them.
+pub const PROSE_EXTENSIONS: &[&str] = &["adoc", "md"];
+
 /// Returns the comment prefix for a given file extension.
 pub fn comment_prefix(ext: &str) -> &'static str {
     match ext {
@@ -28,13 +32,34 @@ pub fn comment_prefix(ext: &str) -> &'static str {
         "ex" | "exs" | "gleam" | "nim" | "py" | "rb" | "sh" | "bash" | "zsh" | "toml" | "yaml"
         | "yml" | "ncl" | "nix" | "jl" => "#",
         "scm" => ";;",
+        "adoc" => "//",
         _ => "//",
     }
+}
+
+/// Render header comment lines for a file extension, ending with a blank
+/// line. Markdown has no line comment, so each line becomes an HTML comment.
+pub fn format_header(ext: &str, lines: &[String]) -> String {
+    let mut out = String::new();
+    for line in lines {
+        if ext == "md" {
+            out.push_str(&format!("<!-- {line} -->\n"));
+        } else {
+            out.push_str(&format!("{} {line}\n", comment_prefix(ext)));
+        }
+    }
+    out.push('\n');
+    out
 }
 
 /// Check whether a file extension is auditable.
 pub fn is_auditable(ext: &str) -> bool {
     AUDITABLE_EXTENSIONS.contains(&ext)
+}
+
+/// Returns true if the extension is a prose format (AsciiDoc or Markdown).
+pub fn is_prose(ext: &str) -> bool {
+    PROSE_EXTENSIONS.contains(&ext)
 }
 
 /// Extract the SPDX-License-Identifier from a file's header.
@@ -60,6 +85,11 @@ pub fn extract_spdx_from_content(content: &str) -> Option<SpdxExpr> {
 pub fn extract_spdx_raw_from_content(content: &str) -> Option<String> {
     for line in content.lines().take(MAX_HEADER_LINES) {
         let trimmed = line.trim();
+        // Markdown HTML comment: <!-- SPDX-License-Identifier: X -->
+        let trimmed = match trimmed.strip_prefix("<!--") {
+            Some(inner) => inner.trim_end().strip_suffix("-->").unwrap_or(inner).trim(),
+            None => trimmed,
+        };
         // Strip comment prefixes.
         let stripped = trimmed
             .strip_prefix("//")
@@ -79,6 +109,43 @@ pub fn extract_spdx_raw_from_content(content: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_format_header_markdown_round_trips() {
+        let h = format_header("md", &["SPDX-License-Identifier: CC-BY-SA-4.0".to_string()]);
+        assert_eq!(h, "<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->\n\n");
+        assert_eq!(
+            extract_spdx_raw_from_content(&h).as_deref(),
+            Some("CC-BY-SA-4.0")
+        );
+    }
+
+    #[test]
+    fn test_format_header_asciidoc() {
+        let h = format_header(
+            "adoc",
+            &["SPDX-License-Identifier: CC-BY-SA-4.0".to_string()],
+        );
+        assert_eq!(h, "// SPDX-License-Identifier: CC-BY-SA-4.0\n\n");
+    }
+
+    #[test]
+    fn test_extract_markdown_html_comment_header() {
+        let content = "<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->\n# Title\n";
+        assert_eq!(
+            extract_spdx_raw_from_content(content).as_deref(),
+            Some("CC-BY-SA-4.0")
+        );
+    }
+
+    #[test]
+    fn test_extract_asciidoc_header() {
+        let content = "// SPDX-License-Identifier: CC-BY-SA-4.0\n= Title\n";
+        assert_eq!(
+            extract_spdx_raw_from_content(content).as_deref(),
+            Some("CC-BY-SA-4.0")
+        );
+    }
 
     #[test]
     fn test_extract_rust_header() {
