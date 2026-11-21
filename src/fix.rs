@@ -38,6 +38,7 @@ pub fn run(opts: &FixOptions) -> Result<i32> {
         Path::new(opts.path),
         &CollectOptions {
             contents: policy.needs_content(),
+            prose_headers: policy.needs_prose_headers(),
         },
     )
     .with_context(|| format!("failed to collect facts from {}", opts.path))?;

@@ -9,7 +9,7 @@
 // already present is skipped, not repeated.
 
 use crate::action::{Action, Plan};
-use plasma_parser::audit::header::{comment_prefix, extract_spdx_raw_from_content};
+use plasma_parser::audit::header::{extract_spdx_raw_from_content, format_header};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -114,9 +114,12 @@ fn add_spdx_header(
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
-    let prefix = comment_prefix(ext);
-    let header = format!(
-        "{prefix} SPDX-License-Identifier: {license}\n{prefix} Copyright (c) {year} {author}\n\n"
+    let header = format_header(
+        ext,
+        &[
+            format!("SPDX-License-Identifier: {license}"),
+            format!("Copyright (c) {year} {author}"),
+        ],
     );
 
     if opts.backup {

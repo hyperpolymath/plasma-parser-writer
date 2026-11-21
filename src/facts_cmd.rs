@@ -9,11 +9,12 @@ use anyhow::{Context, Result};
 use plasma_engine::{collect_opts, CollectOptions};
 use std::path::Path;
 
-pub fn run(path: &str, with_contents: bool) -> Result<()> {
+pub fn run(path: &str, with_contents: bool, with_prose_headers: bool) -> Result<()> {
     let facts = collect_opts(
         Path::new(path),
         &CollectOptions {
             contents: with_contents,
+            prose_headers: with_prose_headers,
         },
     )
     .with_context(|| format!("failed to collect facts from {path}"))?;
