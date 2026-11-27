@@ -90,6 +90,9 @@ enum Commands {
         /// Also include text-file contents (for content-aware policies)
         #[arg(long)]
         with_contents: bool,
+        /// Also record SPDX headers of prose files (.adoc, .md)
+        #[arg(long)]
+        with_prose_headers: bool,
     },
 
     /// Compare two fact snapshots (exit 0 identical, 1 differ).
@@ -225,8 +228,9 @@ fn run(cli: Cli) -> Result<()> {
         Commands::Facts {
             path,
             with_contents,
+            with_prose_headers,
         } => {
-            facts_cmd::run(&path, with_contents)?;
+            facts_cmd::run(&path, with_contents, with_prose_headers)?;
         }
         Commands::Diff {
             before,

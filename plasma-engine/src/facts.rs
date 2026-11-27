@@ -9,7 +9,7 @@
 // implementation can reproduce identical facts. All collections are
 // BTree-ordered so downstream evaluation is deterministic.
 
-use plasma_parser::audit::header::{extract_spdx_raw_from_content, is_auditable};
+use plasma_parser::audit::header::{extract_spdx_raw_from_content, is_auditable, is_prose};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -44,6 +44,9 @@ pub struct CollectOptions {
     /// content-aware conditions like `file-matches-pattern`). Off by
     /// default so the standard snapshot stays lean.
     pub contents: bool,
+    /// Also record SPDX headers of prose files (`.adoc`, `.md`) in
+    /// `spdx_headers`. Off by default so the standard snapshot is unchanged.
+    pub prose_headers: bool,
 }
 
 /// A deterministic snapshot of repository state.
@@ -117,7 +120,7 @@ pub fn collect_opts(root: &Path, opts: &CollectOptions) -> Result<FactSet, FactE
 
         // Read once when we need either the header or the content.
         let ext = rel.extension().and_then(|e| e.to_str()).unwrap_or("");
-        let auditable = is_auditable(ext);
+        let auditable = is_auditable(ext) || (opts.prose_headers && is_prose(ext));
         let want_content = opts.contents
             && entry.metadata().map(|m| m.len()).unwrap_or(u64::MAX) <= MAX_CONTENT_BYTES;
 
@@ -217,6 +220,38 @@ mod tests {
     }
 
     #[test]
+    fn test_prose_headers_opt_in() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("guide.adoc"),
+            "// SPDX-License-Identifier: CC-BY-SA-4.0\n= Guide\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("notes.md"),
+            "<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->\n# Notes\n",
+        )
+        .unwrap();
+        fs::write(dir.path().join("bare.md"), "# Bare\n").unwrap();
+
+        let default = collect(dir.path()).unwrap();
+        assert!(!default.spdx_headers.contains_key("guide.adoc"));
+
+        let prose = collect_opts(
+            dir.path(),
+            &CollectOptions {
+                prose_headers: true,
+                ..CollectOptions::default()
+            },
+        )
+        .unwrap();
+        let cc = Some("CC-BY-SA-4.0".to_string());
+        assert_eq!(prose.spdx_headers.get("guide.adoc"), Some(&cc));
+        assert_eq!(prose.spdx_headers.get("notes.md"), Some(&cc));
+        assert_eq!(prose.spdx_headers.get("bare.md"), Some(&None));
+    }
+
+    #[test]
     fn test_cargo_version_metadata() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(
@@ -245,7 +280,14 @@ mod tests {
         assert!(!json.contains("file_contents"));
 
         // Opt-in: contents present.
-        let full = collect_opts(dir.path(), &CollectOptions { contents: true }).unwrap();
+        let full = collect_opts(
+            dir.path(),
+            &CollectOptions {
+                contents: true,
+                ..CollectOptions::default()
+            },
+        )
+        .unwrap();
         assert_eq!(
             full.file_contents.get("a.rs"),
             Some(&"fn main() {}\n".to_string())
@@ -263,7 +305,14 @@ mod tests {
         fs::write(dir.path().join("big.txt"), &big).unwrap();
         fs::write(dir.path().join("small.txt"), "ok\n").unwrap();
 
-        let facts = collect_opts(dir.path(), &CollectOptions { contents: true }).unwrap();
+        let facts = collect_opts(
+            dir.path(),
+            &CollectOptions {
+                contents: true,
+                ..CollectOptions::default()
+            },
+        )
+        .unwrap();
         // Both files are listed…
         assert!(facts.files.contains("big.txt"));
         assert!(facts.files.contains("small.txt"));

@@ -122,7 +122,7 @@ fn expand_subject(subject: &Subject, facts: &FactSet) -> Vec<Instance> {
 ///
 /// `**/` prefixes also match zero directories: "**/*.rs" matches both
 /// "src/main.rs" and "main.rs".
-fn glob_matches(pattern: &str, path: &str) -> bool {
+pub(crate) fn glob_matches(pattern: &str, path: &str) -> bool {
     match glob::Pattern::new(pattern) {
         Ok(p) => {
             if p.matches(path) {

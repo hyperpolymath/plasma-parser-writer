@@ -6,7 +6,7 @@
 // expectations from .plasma.toml when present).
 
 use anyhow::{Context, Result};
-use plasma_parser::audit::header::comment_prefix;
+use plasma_parser::audit::header::format_header;
 use plasma_parser::audit::{scan_repo, AuditStatus};
 use plasma_parser::spdx::parse_spdx_expr;
 use plasma_parser::zone::boundary::parse_plasma_toml;
@@ -42,10 +42,12 @@ pub fn run(path: &str, license: &str, fix: bool) -> Result<()> {
             AuditStatus::MissingHeader if fix => {
                 let full_path = root.join(&file.path);
                 let ext = file.path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                let prefix = comment_prefix(ext);
-                let header = format!(
-                    "{prefix} SPDX-License-Identifier: {}\n{prefix} Copyright (c) 2026 CHANGE-ME\n\n",
-                    file.expected_license
+                let header = format_header(
+                    ext,
+                    &[
+                        format!("SPDX-License-Identifier: {}", file.expected_license),
+                        "Copyright (c) 2026 CHANGE-ME".to_string(),
+                    ],
                 );
                 let content = fs::read_to_string(&full_path)
                     .with_context(|| format!("cannot read {}", full_path.display()))?;

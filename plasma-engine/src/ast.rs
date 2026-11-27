@@ -8,7 +8,8 @@
 // rules carry an explicit severity, and the condition vocabulary is
 // license-agnostic.
 
-use crate::finding::Severity;
+use crate::{eval::glob_matches, finding::Severity};
+use plasma_parser::audit::header::PROSE_EXTENSIONS;
 use serde::{Deserialize, Serialize};
 
 /// Schema/policy version as a major.minor pair.
@@ -209,6 +210,78 @@ impl Policy {
             .chain(added)
             .any(|r| condition_needs_content(&r.condition))
     }
+}
+
+impl Policy {
+    /// Whether any rule checks the header of a prose file (`.adoc`, `.md`),
+    /// so callers know to collect prose headers before evaluating.
+    pub fn needs_prose_headers(&self) -> bool {
+        let added = self
+            .overlays
+            .iter()
+            .flat_map(|o| &o.effects)
+            .flat_map(|e| match e {
+                OverlayEffect::AddRules { rules } => rules.as_slice(),
+                _ => &[],
+            });
+        self.rules
+            .iter()
+            .chain(added)
+            .filter(|r| matches!(r.resource, Resource::Header))
+            .any(|r| match &r.subject {
+                Subject::File { path } => is_prose_path(path),
+                Subject::FilePattern { patterns } => patterns.iter().any(|p| can_match_prose(p)),
+                _ => false,
+            })
+    }
+}
+
+fn is_prose_path(p: &str) -> bool {
+    p.ends_with(".adoc") || p.ends_with(".md")
+}
+
+fn can_match_prose(pattern: &str) -> bool {
+    if glob::Pattern::new(pattern).is_err() {
+        return false;
+    }
+
+    // The stem and directories are unknown. The extension can start at a
+    // token boundary or inside a wildcard, so test the glob tails that could
+    // consume the extension, starting with the shortest.
+    let mut tokens = Vec::new();
+    let mut rest = pattern;
+    while let Some(c) = rest.chars().next() {
+        tokens.push((rest, c != '*'));
+        rest = match c {
+            '[' => {
+                // A class may have an initial literal ']', after an optional '!'.
+                let body = &rest[1..];
+                let body = body.strip_prefix('!').unwrap_or(body);
+                let body = body.strip_prefix(']').unwrap_or(body);
+                body.split_once(']').expect("validated glob class").1
+            }
+            '*' if rest.starts_with("**") => {
+                let tail = &rest[2..];
+                tail.strip_prefix(std::path::is_separator).unwrap_or(tail)
+            }
+            _ => &rest[c.len_utf8()..],
+        };
+    }
+
+    PROSE_EXTENSIONS.iter().any(|ext| {
+        let suffix = format!(".{ext}");
+        let mut required = 0;
+        for &(tail, consumes_char) in tokens.iter().rev() {
+            required += usize::from(consumes_char);
+            if required > suffix.len() {
+                break;
+            }
+            if glob_matches(tail, &suffix) {
+                return true;
+            }
+        }
+        false
+    })
 }
 
 fn condition_needs_content(c: &Condition) -> bool {
