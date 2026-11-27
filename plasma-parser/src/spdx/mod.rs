@@ -186,8 +186,14 @@ impl Parser {
                                 if matches!(self.peek(), Some(Token::Dot)) {
                                     self.advance(); // consume Dot
                                     parts.push(".".to_string());
-                                    if let Some(Token::Number(m)) = self.advance() {
-                                        parts.push(m.to_string());
+                                    match self.advance() {
+                                        Some(Token::Number(m)) => parts.push(m.to_string()),
+                                        Some(token) => {
+                                            return Err(SpdxParseError::UnexpectedToken(format!(
+                                                "{token:?}"
+                                            )))
+                                        }
+                                        None => return Err(SpdxParseError::UnexpectedEnd),
                                     }
                                 }
                             }
@@ -322,5 +328,16 @@ mod tests {
     fn test_parenthesised() {
         let expr = parse_spdx_expr("MIT OR (GPL-3.0 AND BSD-3-Clause)").unwrap();
         assert!(matches!(expr, SpdxExpr::Or(_, _)));
+    }
+}
+
+#[cfg(test)]
+mod invalid_minor_regressions {
+    #[test]
+    fn rejects_invalid_minor_versions() {
+        for input in ["PMPL-1.@", "PMPL-1.4294967296", "PMPL-1."] {
+            assert!(super::parse_spdx_expr(input).is_err(), "{input}");
+        }
+        assert!(super::parse_spdx_expr("PMPL-1.0").is_ok());
     }
 }

@@ -33,7 +33,36 @@ impl Instance {
 }
 
 /// Evaluate a policy against a fact set.
+///
+/// The loader validates policies, but callers can also construct `Policy`
+/// values directly. Do not issue successful findings for such unvalidated
+/// inputs: reject them explicitly before executing any rule.
 pub fn evaluate(policy: &Policy, facts: &FactSet) -> Evaluation {
+    if let Err(error) = crate::schema::validate(policy) {
+        return Evaluation {
+            root: facts.root.clone(),
+            policy_id: policy.id.clone(),
+            policy_version: policy.version,
+            schema_version: policy.schema_version,
+            findings: vec![Finding {
+                rule_id: "__policy_admission__".to_owned(),
+                modality: Modality::Obligation,
+                severity: Severity::Error,
+                subject: "repo".to_owned(),
+                message: format!("policy rejected before evaluation: {error}"),
+                rationale: Some(
+                    "Only schema-validated policies can produce compliance findings".to_owned(),
+                ),
+                source: Some("plasma:schema".to_owned()),
+                status: FindingStatus::Violation,
+            }],
+            summary: Summary {
+                errors: 1,
+                ..Summary::default()
+            },
+        };
+    }
+
     let mut findings = Vec::new();
 
     for (rule, origin) in effective_rules(policy) {
@@ -271,6 +300,15 @@ fn check_rule(rule: &Rule, origin: Option<&str>, instance: &Instance, facts: &Fa
     let resource_desc = describe_resource(&rule.resource);
 
     let (violated, message) = match (&rule.modality, &rule.action) {
+        // Defense in depth: even an illicit call that bypasses admission must
+        // never report a reserved action as satisfied (including permission).
+        (_, ActionKind::ConsistentWith { .. }) => (
+            true,
+            format!(
+                "consistency action is reserved and cannot be evaluated for {}",
+                instance.label()
+            ),
+        ),
         (Modality::Permission, _) => (
             false,
             format!("{resource_desc} is permitted for {}", instance.label()),
@@ -341,12 +379,6 @@ fn check_rule(rule: &Rule, origin: Option<&str>, instance: &Instance, facts: &Fa
                 },
             )
         }
-        // ConsistentWith is rejected at load; treated as a pass to keep
-        // evaluation total.
-        (_, ActionKind::ConsistentWith { .. }) => (
-            false,
-            format!("consistency check skipped for {}", instance.label()),
-        ),
     };
 
     let source = rule
